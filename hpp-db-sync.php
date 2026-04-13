@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HangPoPok DB Sync (Slave Version)
  * Description: ប្រព័ន្ធទទួលទិន្នន័យពី Master (Post All Site) និងគ្រប់គ្រងស្តុក (Auto-Update ពី GitHub)។
- * Version: 1.0
+ * Version: 1.1
  * Author: WP Admin
  */
 
