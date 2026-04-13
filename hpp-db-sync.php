@@ -385,12 +385,80 @@ function hpp_db_sync_html() {
         document.querySelectorAll('.wp-row').forEach(row => { row.style.display = (row.getAttribute('data-title').includes(input) || row.getAttribute('data-pid').includes(input)) ? '' : 'none'; });
     }
 
-    // Auto Match (ដោយគ្មាន Force Sync)
-    function cleanStringForMatch(str) { return !str ? "" : String(str).toLowerCase().replace(/×/g, 'x').replace(/អុី/g, 'អ៊ី').replace(/[^\u1780-\u17FFa-z0-9]/g, ''); }
+    async function getStockMap(oid) {
+        let map = {}; let off = 0;
+        while (true) {
+            const res = await fetchFromProxy(`{ product_stock(outlet: ${oid}, pageSize: 350, offset: ${off}) { product stock_qty } }`);
+            const list = res.data?.product_stock; if (!list || list.length === 0) break;
+            list.forEach(s => map[s.product] = parseFloat(s.stock_qty) || 0);
+            if (list.length < 350) break; off += list.length;
+        } return map;
+    }
+
+    function cleanStringForMatch(str) { 
+        return !str ? "" : String(str).toLowerCase().replace(/×/g, 'x').replace(/អុី/g, 'អ៊ី').replace(/[^\u1780-\u17FFa-z0-9]/g, ''); 
+    }
+
     async function autoMatchOldPosts() {
-        if(!confirm("ចាប់ផ្តើមផ្គូផ្គងស្វ័យប្រវត្តិ?")) return;
-        // ... (កូដ Auto Match ដំណើរការដូចដើម)
-        alert('សូមបញ្ចូលកូដ Auto Match ដើមរបស់លោកអ្នកទីនេះបើចង់ប្រើ');
+        if(!confirm("ចាប់ផ្តើមស្វែងរក និងផ្គូផ្គងស្វ័យប្រវត្តិ?")) return;
+        const btn = document.getElementById('btn-auto-match'); 
+        const statusBox = document.getElementById('auto-status');
+        btn.disabled = true;
+        
+        try {
+            statusBox.innerText = "⏳ កំពុងទាញទិន្នន័យពីហាងពពក...";
+            const enumJson = await fetchFromProxy(`{ __type(name: "ProductKbnEnum") { enumValues { name } } }`);
+            const allKbns = enumJson.data.__type.enumValues.map(e => e.name); 
+            let allProducts = [];
+            for (const kbn of allKbns) {
+                let off = 0; let end = false;
+                while (!end) {
+                    const json = await fetchFromProxy(`{ products(kbn: ${kbn}, pageSize: 200, offset: ${off}) { id code name barcode price images description } }`);
+                    const list = json.data?.products; if (!list || list.length === 0) { end = true; continue; }
+                    allProducts = allProducts.concat(list); off += list.length;
+                }
+            }
+            const s1 = await getStockMap('null'); 
+            const s2 = await getStockMap('272');
+            
+            statusBox.innerText = "⏳ កំពុងផ្គូផ្គង...";
+            let count = 0; 
+            const rows = document.querySelectorAll('.wp-row');
+            
+            for (let row of rows) {
+                const td = row.querySelector('td[id^="wp-st-"]');
+                if (td.querySelector('.empty-data')) {
+                    const cleanWpTitle = cleanStringForMatch(row.getAttribute('data-title'));
+                    const match = allProducts.find(p => cleanStringForMatch(p.name) === cleanWpTitle);
+                    if (match) {
+                        const totalStock = (s1[match.id] || 0) + (s2[match.id] || 0);
+                        let label = totalStock >= 50 ? "មានស្តុក" : (totalStock > 0 ? "ជិតអស់ស្តុក" : "អស់ស្តុក");
+                        let img = ""; try { const imgs = JSON.parse(match.images); img = imgs[0] ? `https://s3-ap-southeast-1.amazonaws.com/hangpopok.com/product/${imgs[0].replace(/[\[\]"]/g, '')}` : ""; } catch(e){}
+                        const fd = new FormData(); 
+                        fd.append('action', 'save_hpp_to_db'); 
+                        fd.append('post_id', row.getAttribute('data-pid')); 
+                        fd.append('hpp_id', match.id); 
+                        fd.append('product_code', match.code || ''); 
+                        fd.append('barcode', match.barcode || match.code || ''); 
+                        fd.append('status', label); 
+                        fd.append('qty', totalStock); 
+                        fd.append('price', match.price ? (match.price * 100).toLocaleString() + " ៛" : "---"); 
+                        fd.append('image_url', img); 
+                        fd.append('description', match.description || '');
+                        
+                        await fetch(ajaxurl, { method: 'POST', body: fd });
+                        td.innerHTML = `<span class="status-done">✅ Auto-Matched (${totalStock})</span>`; 
+                        count++;
+                    }
+                }
+            }
+            statusBox.innerText = `✅ រួចរាល់! បានផ្គូផ្គង ${count} ទំនិញ។`; 
+            btn.disabled = false;
+        } catch (err) { 
+            alert("Error: " + err.message); 
+            btn.disabled = false; 
+            statusBox.innerText = "❌ មានបញ្ហា!";
+        }
     }
     </script>
     <?php
