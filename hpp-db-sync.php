@@ -481,3 +481,30 @@ function hpp_display_meta_on_single_post( $content ) {
     } 
     return $content;
 }
+// ==========================================
+// ៨. ប្រព័ន្ធកំណត់ម៉ោង Auto Sync (Background Cron Job)
+// ==========================================
+add_filter( 'cron_schedules', 'hpp_custom_cron_schedules' );
+function hpp_custom_cron_schedules( $schedules ) {
+    if ( ! isset( $schedules['thirty_minutes'] ) ) {
+        $schedules['thirty_minutes'] = array(
+            'interval' => 1800, // 1800 វិនាទី = 30 នាទី
+            'display'  => __( 'Every 30 Minutes' )
+        );
+    }
+    return $schedules;
+}
+
+add_action( 'init', 'hpp_setup_background_sync' );
+function hpp_setup_background_sync() {
+    if ( ! wp_next_scheduled( 'hpp_auto_sync_stock_event' ) ) {
+        wp_schedule_event( time(), 'thirty_minutes', 'hpp_auto_sync_stock_event' );
+    }
+}
+
+// មុខងារនេះនឹងត្រូវបញ្ឆេះដោយស្វ័យប្រវត្តិតាមម៉ោងដែលបានកំណត់
+add_action( 'hpp_auto_sync_stock_event', 'hpp_execute_background_auto_match' );
+function hpp_execute_background_auto_match() {
+    // យើងនឹងដាក់កូដ PHP សម្រាប់ទាញទិន្នន័យពីហាងពពកនៅទីនេះ
+    error_log("HPP Background Sync ត្រូវបានបញ្ឆេះដោយជោគជ័យតាមកាលវិភាគ ៣០ នាទី!");
+}
